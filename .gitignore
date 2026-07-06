@@ -24,11 +24,11 @@ wheels/
 *.egg
 MANIFEST
 
-# Environment variables
+# Environment variables - IMPORTANT!
 .env
-.venv
 .env.local
 .env.production
+*.env
 
 # IDE
 .vscode/
