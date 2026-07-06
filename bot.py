@@ -4,7 +4,7 @@ import logging
 import threading
 from typing import Dict, Optional
 from datetime import datetime
-from flask import Flask, render_template_string
+from flask import Flask
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -21,7 +21,6 @@ from deep_translator import GoogleTranslator
 # CONFIGURATION & LOGGING
 # ============================
 
-# Configure logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -36,16 +35,13 @@ app = Flask(__name__)
 
 @app.route('/')
 def healthcheck():
-    """Healthcheck endpoint for Railway"""
     return "✅ Bot is running!", 200
 
 @app.route('/health')
 def health():
-    """Alternative healthcheck endpoint"""
     return {"status": "healthy", "bot": "@Language27translatorbot"}, 200
 
 def run_web_server():
-    """Run Flask web server in a separate thread"""
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
@@ -53,55 +49,38 @@ def run_web_server():
 # ENVIRONMENT VARIABLE CHECK
 # ============================
 
-def get_token():
-    """Get bot token from environment variables with better error handling"""
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    
-    if not token:
-        # Try to read from .env file if it exists (for local development)
-        try:
-            with open(".env", "r") as f:
-                for line in f:
-                    if line.startswith("TELEGRAM_BOT_TOKEN="):
-                        token = line.split("=")[1].strip()
-                        break
-        except FileNotFoundError:
-            pass
-    
-    if not token:
-        logger.error("=" * 60)
-        logger.error("❌ TELEGRAM_BOT_TOKEN environment variable not set!")
-        logger.error("=" * 60)
-        logger.error("Please set your bot token using one of these methods:")
-        logger.error("")
-        logger.error("1. Railway Dashboard:")
-        logger.error("   - Go to your Railway project")
-        logger.error("   - Click on your service")
-        logger.error("   - Go to 'Variables' tab")
-        logger.error("   - Add: TELEGRAM_BOT_TOKEN = your_token_here")
-        logger.error("")
-        logger.error("2. Railway CLI:")
-        logger.error("   railway variables set TELEGRAM_BOT_TOKEN='your_token_here'")
-        logger.error("")
-        logger.error("3. Local .env file:")
-        logger.error("   Create a .env file with: TELEGRAM_BOT_TOKEN=your_token_here")
-        logger.error("=" * 60)
-        sys.exit(1)
-    
-    return token
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
-# Get token with error handling
-TOKEN = get_token()
+if not TOKEN or TOKEN == "your_actual_token_here":
+    logger.error("=" * 70)
+    logger.error("❌ INVALID TELEGRAM_BOT_TOKEN!")
+    logger.error("=" * 70)
+    logger.error("You must set a valid bot token from @BotFather")
+    logger.error("")
+    logger.error("How to get your token:")
+    logger.error("1. Open Telegram")
+    logger.error("2. Search for @BotFather")
+    logger.error("3. Send: /token")
+    logger.error("4. Select your bot: @Language27translatorbot")
+    logger.error("5. Copy the token (looks like: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz)")
+    logger.error("")
+    logger.error("How to set it on Railway:")
+    logger.error("1. Go to your Railway project")
+    logger.error("2. Click on your service")
+    logger.error("3. Click 'Variables' tab")
+    logger.error("4. Add: TELEGRAM_BOT_TOKEN = [your_real_token]")
+    logger.error("5. Click 'Save' and redeploy")
+    logger.error("=" * 70)
+    sys.exit(1)
+
 logger.info("✅ Bot token loaded successfully!")
 
 # ============================
 # DATA STORAGE
 # ============================
 
-# Dictionary to store user preferences (in-memory)
 user_preferences: Dict[int, Dict[str, str]] = {}
 
-# Language data
 LANGUAGES = {
     "English": "en",
     "Spanish": "es",
@@ -112,7 +91,6 @@ LANGUAGES = {
     "Russian": "ru",
     "Japanese": "ja",
     "Chinese (Simplified)": "zh-CN",
-    "Chinese (Traditional)": "zh-TW",
     "Korean": "ko",
     "Arabic": "ar",
     "Hindi": "hi",
@@ -134,16 +112,14 @@ LANGUAGES = {
     "Hebrew": "he",
 }
 
-# Language emojis
 LANGUAGE_EMOJIS = {
     "en": "🇬🇧", "es": "🇪🇸", "fr": "🇫🇷", "de": "🇩🇪",
     "it": "🇮🇹", "pt": "🇵🇹", "ru": "🇷🇺", "ja": "🇯🇵",
-    "zh-CN": "🇨🇳", "zh-TW": "🇹🇼", "ko": "🇰🇷", "ar": "🇸🇦",
-    "hi": "🇮🇳", "nl": "🇳🇱", "el": "🇬🇷", "tr": "🇹🇷",
-    "vi": "🇻🇳", "th": "🇹🇭", "id": "🇮🇩", "pl": "🇵🇱",
-    "uk": "🇺🇦", "ro": "🇷🇴", "cs": "🇨🇿", "sv": "🇸🇪",
-    "no": "🇳🇴", "da": "🇩🇰", "fi": "🇫🇮", "hu": "🇭🇺",
-    "he": "🇮🇱",
+    "zh-CN": "🇨🇳", "ko": "🇰🇷", "ar": "🇸🇦", "hi": "🇮🇳",
+    "nl": "🇳🇱", "el": "🇬🇷", "tr": "🇹🇷", "vi": "🇻🇳",
+    "th": "🇹🇭", "id": "🇮🇩", "pl": "🇵🇱", "uk": "🇺🇦",
+    "ro": "🇷🇴", "cs": "🇨🇿", "sv": "🇸🇪", "no": "🇳🇴",
+    "da": "🇩🇰", "fi": "🇫🇮", "hu": "🇭🇺", "he": "🇮🇱",
 }
 
 # ============================
@@ -151,25 +127,21 @@ LANGUAGE_EMOJIS = {
 # ============================
 
 def get_user_language(user_id: int) -> str:
-    """Get user's preferred language, default to English"""
     if user_id in user_preferences:
         return user_preferences[user_id].get("language", "English")
     return "English"
 
 def update_user_preference(user_id: int, key: str, value: str) -> None:
-    """Update user preference"""
     if user_id not in user_preferences:
         user_preferences[user_id] = {}
     user_preferences[user_id][key] = value
 
 def get_user_stats(user_id: int) -> Dict:
-    """Get user statistics"""
     if user_id not in user_preferences:
         return {"translations": 0, "last_activity": None}
     return user_preferences[user_id].get("stats", {"translations": 0, "last_activity": None})
 
 def increment_translation_count(user_id: int) -> None:
-    """Increment user's translation count"""
     if user_id not in user_preferences:
         user_preferences[user_id] = {}
     if "stats" not in user_preferences[user_id]:
@@ -177,37 +149,25 @@ def increment_translation_count(user_id: int) -> None:
     user_preferences[user_id]["stats"]["translations"] += 1
     user_preferences[user_id]["stats"]["last_activity"] = datetime.now().isoformat()
 
-def create_language_keyboard(exclude_lang: Optional[str] = None) -> InlineKeyboardMarkup:
-    """Create a keyboard with language buttons"""
+def create_language_keyboard() -> InlineKeyboardMarkup:
     keyboard = []
     row = []
-    
     for lang_name, lang_code in LANGUAGES.items():
-        if exclude_lang and lang_name == exclude_lang:
-            continue
         emoji = LANGUAGE_EMOJIS.get(lang_code, "🌍")
-        button_text = f"{emoji} {lang_name}"
-        row.append(InlineKeyboardButton(button_text, callback_data=f"setlang_{lang_code}"))
+        row.append(InlineKeyboardButton(f"{emoji} {lang_name}", callback_data=f"setlang_{lang_code}"))
         if len(row) == 2:
             keyboard.append(row)
             row = []
     if row:
         keyboard.append(row)
-    
-    keyboard.append([
-        InlineKeyboardButton("📊 My Stats", callback_data="stats"),
-        InlineKeyboardButton("ℹ️ Help", callback_data="help")
-    ])
-    keyboard.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")])
-    
+    keyboard.append([InlineKeyboardButton("📊 My Stats", callback_data="stats")])
+    keyboard.append([InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")])
     return InlineKeyboardMarkup(keyboard)
 
-def create_main_menu(user_id: int) -> InlineKeyboardMarkup:
-    """Create the main menu keyboard"""
+def create_main_menu() -> InlineKeyboardMarkup:
     keyboard = [
         [InlineKeyboardButton("🌍 Change Language", callback_data="change_lang")],
         [InlineKeyboardButton("📊 My Statistics", callback_data="stats")],
-        [InlineKeyboardButton("ℹ️ Help & Commands", callback_data="help")],
         [InlineKeyboardButton("📋 Available Languages", callback_data="list_langs")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -217,16 +177,13 @@ def create_main_menu(user_id: int) -> InlineKeyboardMarkup:
 # ============================
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /start command"""
     user = update.effective_user
     user_id = user.id
-    username = user.username or user.first_name
     
-    # Initialize user preferences
     if user_id not in user_preferences:
         update_user_preference(user_id, "language", "English")
         update_user_preference(user_id, "stats", {"translations": 0, "last_activity": None})
-        logger.info(f"New user: {username} (ID: {user_id})")
+        logger.info(f"New user: {user.username or user.first_name} (ID: {user_id})")
     
     current_lang = get_user_language(user_id)
     stats = get_user_stats(user_id)
@@ -234,84 +191,31 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     welcome_text = (
         f"🌟 **Welcome to Language27 Translator Bot!**\n\n"
         f"👋 Hello {user.first_name}!\n"
-        f"📝 Your current target language: **{current_lang}**\n"
-        f"📊 Total translations: **{stats['translations']}**\n\n"
-        f"**How to use:**\n"
-        f"• Send any text message to translate it\n"
-        f"• Use the buttons below to navigate\n"
-        f"• Type /help for more commands\n\n"
-        f"**Powered by:** Google Translate API"
+        f"📝 Target language: **{current_lang}**\n"
+        f"📊 Translations: **{stats['translations']}**\n\n"
+        f"Send any text to translate it!"
     )
     
-    reply_markup = create_main_menu(user_id)
     await update.message.reply_text(
         welcome_text,
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
-    )
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /help command"""
-    help_text = (
-        "📖 **Language27 Translator Bot - Help**\n\n"
-        "**Commands:**\n"
-        "• /start - Show welcome message\n"
-        "• /help - Show this help\n"
-        "• /language - Change translation language\n"
-        "• /languages - List all available languages\n"
-        "• /stats - View your statistics\n"
-        "• /about - About this bot\n\n"
-        "**Translation:**\n"
-        "Just send any text message and I'll translate it!\n"
-        "The source language is detected automatically."
-    )
-    
-    reply_markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
-    ])
-    
-    await update.message.reply_text(
-        help_text,
-        reply_markup=reply_markup,
+        reply_markup=create_main_menu(),
         parse_mode="Markdown"
     )
 
 async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /language command"""
     user_id = update.effective_user.id
     current_lang = get_user_language(user_id)
     
     await update.message.reply_text(
-        f"🌍 **Current Language:** {current_lang}\n\n"
-        f"Select your target translation language:",
+        f"🌍 **Current Language:** {current_lang}\n\nSelect your target language:",
         reply_markup=create_language_keyboard(),
         parse_mode="Markdown"
     )
 
-async def languages_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /languages command"""
-    lang_list = []
-    for lang_name, lang_code in LANGUAGES.items():
-        emoji = LANGUAGE_EMOJIS.get(lang_code, "🌍")
-        lang_list.append(f"{emoji} **{lang_name}** (`{lang_code}`)")
-    
-    text = (
-        "🌍 **Available Languages:**\n\n"
-        + "\n".join(lang_list)
-        + "\n\nUse /language to change your target language."
-    )
-    
-    await update.message.reply_text(
-        text,
-        parse_mode="Markdown"
-    )
-
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /stats command"""
     user_id = update.effective_user.id
     current_lang = get_user_language(user_id)
     stats = get_user_stats(user_id)
-    translations = stats["translations"]
     last_active = stats["last_activity"]
     
     if last_active:
@@ -321,65 +225,35 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     text = (
         f"📊 **Your Statistics**\n\n"
-        f"🆔 User ID: `{user_id}`\n"
         f"🌍 Target Language: **{current_lang}**\n"
-        f"📝 Total Translations: **{translations}**\n"
-        f"⏰ Last Activity: {last_active}\n\n"
-        f"Keep translating to improve your language skills! 💪"
+        f"📝 Total Translations: **{stats['translations']}**\n"
+        f"⏰ Last Activity: {last_active}"
     )
     
-    reply_markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
-    ])
-    
-    await update.message.reply_text(
-        text,
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(text, parse_mode="Markdown")
 
-async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /about command"""
-    text = (
-        "🤖 **About Language27 Translator Bot**\n\n"
-        "Version: 1.0.0\n"
-        "Created for the Language27 project\n\n"
-        "**Features:**\n"
-        "• 30+ languages supported\n"
-        "• Automatic language detection\n"
-        "• User preferences saved\n"
-        "• Translation statistics\n"
-        "• Clean, intuitive interface\n\n"
-        "**Technologies:**\n"
-        "• Python 3.9+\n"
-        "• python-telegram-bot\n"
-        "• deep-translator\n"
-        "• Deployed on Railway"
-    )
-    
-    reply_markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
-    ])
+async def languages_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    lang_list = []
+    for lang_name, lang_code in LANGUAGES.items():
+        emoji = LANGUAGE_EMOJIS.get(lang_code, "🌍")
+        lang_list.append(f"{emoji} **{lang_name}**")
     
     await update.message.reply_text(
-        text,
-        reply_markup=reply_markup,
+        "🌍 **Available Languages:**\n\n" + "\n".join(lang_list),
         parse_mode="Markdown"
     )
 
 # ============================
-# CALLBACK QUERY HANDLERS
+# CALLBACK HANDLERS
 # ============================
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle all button callbacks"""
     query = update.callback_query
     user_id = update.effective_user.id
     data = query.data
     
     await query.answer()
     
-    # Handle language selection
     if data.startswith("setlang_"):
         lang_code = data.replace("setlang_", "")
         lang_name = None
@@ -390,41 +264,23 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         
         if lang_name:
             update_user_preference(user_id, "language", lang_name)
-            emoji = LANGUAGE_EMOJIS.get(lang_code, "🌍")
-            
             await query.edit_message_text(
-                f"✅ **Language Updated!**\n\n"
-                f"{emoji} Target language changed to: **{lang_name}**\n\n"
-                f"Now send me any text to translate it to {lang_name}.",
+                f"✅ Language changed to: **{lang_name}**\n\nSend any text to translate!",
                 parse_mode="Markdown"
             )
-            
-            reply_markup = create_main_menu(user_id)
-            await query.message.reply_text(
-                "🔙 **Main Menu**",
-                reply_markup=reply_markup,
-                parse_mode="Markdown"
-            )
-        else:
-            await query.edit_message_text("❌ Language not found. Please try again.")
     
-    # Handle change language
     elif data == "change_lang":
         current_lang = get_user_language(user_id)
         await query.edit_message_text(
-            f"🌍 **Change Language**\n\n"
-            f"Current: **{current_lang}**\n"
-            f"Select a new target language:",
+            f"🌍 **Current:** {current_lang}\n\nSelect new language:",
             reply_markup=create_language_keyboard(),
             parse_mode="Markdown"
         )
     
-    # Handle statistics
     elif data == "stats":
         stats = get_user_stats(user_id)
-        translations = stats["translations"]
-        last_active = stats["last_activity"]
         current_lang = get_user_language(user_id)
+        last_active = stats["last_activity"]
         
         if last_active:
             last_active = datetime.fromisoformat(last_active).strftime("%Y-%m-%d %H:%M")
@@ -434,116 +290,66 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         text = (
             f"📊 **Your Statistics**\n\n"
             f"🌍 Target Language: **{current_lang}**\n"
-            f"📝 Total Translations: **{translations}**\n"
-            f"⏰ Last Activity: {last_active}\n\n"
-            f"Keep up the great work! 🎉"
+            f"📝 Translations: **{stats['translations']}**\n"
+            f"⏰ Last Active: {last_active}"
         )
-        
-        reply_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 Back", callback_data="change_lang")],
-            [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
-        ])
         
         await query.edit_message_text(
             text,
-            reply_markup=reply_markup,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back", callback_data="change_lang")],
+                [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
+            ]),
             parse_mode="Markdown"
         )
     
-    # Handle help
-    elif data == "help":
-        help_text = (
-            "📖 **Quick Help**\n\n"
-            "• Send any text → Translate it\n"
-            "• Use /language → Change language\n"
-            "• Use /languages → See all options\n"
-            "• Use /stats → View statistics\n\n"
-            "Need more help? Type /help for detailed instructions."
-        )
-        
-        reply_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 Back", callback_data="change_lang")],
-            [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
-        ])
-        
-        await query.edit_message_text(
-            help_text,
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
-        )
-    
-    # Handle main menu
-    elif data == "main_menu":
-        current_lang = get_user_language(user_id)
-        stats = get_user_stats(user_id)
-        
-        menu_text = (
-            f"🏠 **Main Menu**\n\n"
-            f"📍 Current language: **{current_lang}**\n"
-            f"📊 Translations: **{stats['translations']}**\n\n"
-            f"Send any text to translate it!"
-        )
-        
-        reply_markup = create_main_menu(user_id)
-        await query.edit_message_text(
-            menu_text,
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
-        )
-    
-    # Handle list languages
     elif data == "list_langs":
         lang_list = []
         for lang_name, lang_code in LANGUAGES.items():
             emoji = LANGUAGE_EMOJIS.get(lang_code, "🌍")
             lang_list.append(f"{emoji} {lang_name}")
         
-        text = (
-            "🌍 **Available Languages:**\n\n"
-            + "\n".join(sorted(lang_list))
-            + "\n\nUse /language to change your target language."
+        await query.edit_message_text(
+            "🌍 **All Languages:**\n\n" + "\n".join(lang_list),
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back", callback_data="change_lang")]
+            ]),
+            parse_mode="Markdown"
         )
-        
-        reply_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 Back", callback_data="change_lang")],
-            [InlineKeyboardButton("🏠 Main Menu", callback_data="main_menu")]
-        ])
+    
+    elif data == "main_menu":
+        current_lang = get_user_language(user_id)
+        stats = get_user_stats(user_id)
         
         await query.edit_message_text(
-            text,
-            reply_markup=reply_markup,
+            f"🏠 **Main Menu**\n\n📍 Language: **{current_lang}**\n📊 Translations: **{stats['translations']}**\n\nSend any text to translate!",
+            reply_markup=create_main_menu(),
             parse_mode="Markdown"
         )
 
 # ============================
-# MESSAGE HANDLERS
+# MESSAGE HANDLER
 # ============================
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle text messages (translate them)"""
     user_id = update.effective_user.id
     text = update.message.text
     
-    # Skip if it's a command
     if text.startswith('/'):
         return
     
-    # Get user's target language
     target_lang_name = get_user_language(user_id)
     target_lang_code = LANGUAGES.get(target_lang_name, "en")
     
     try:
-        # Show typing indicator
         await update.message.chat.send_action(action="typing")
         
-        # Translate the text
         translator = GoogleTranslator(source="auto", target=target_lang_code)
         translated = translator.translate(text)
         
-        # Get source language
+        # Detect source language
         try:
             source_lang = translator.detect(text)
-            source_emoji = LANGUAGE_EMOJIS.get(source_lang, "🌍")
             source_name = ""
             for name, code in LANGUAGES.items():
                 if code == source_lang:
@@ -553,97 +359,63 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 source_name = source_lang
         except:
             source_name = "Unknown"
-            source_emoji = "🌍"
         
-        target_emoji = LANGUAGE_EMOJIS.get(target_lang_code, "🌍")
-        
-        # Increment translation count
         increment_translation_count(user_id)
         
-        # Prepare response
         response = (
             f"🔁 **Translation**\n\n"
-            f"📝 **Original ({source_name})**\n"
-            f"{text}\n\n"
-            f"{target_emoji} **Translated ({target_lang_name})**\n"
-            f"{translated}\n\n"
-            f"💡 Tip: Use /language to change target language"
+            f"📝 **Original ({source_name})**\n{text}\n\n"
+            f"🌍 **Translated ({target_lang_name})**\n{translated}"
         )
         
-        await update.message.reply_text(
-            response,
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text(response, parse_mode="Markdown")
         
     except Exception as e:
-        logger.error(f"Translation error for user {user_id}: {e}")
-        await update.message.reply_text(
-            f"❌ Sorry, I couldn't translate that message.\n\n"
-            f"Error: {str(e)[:100]}\n\n"
-            f"Please try again with a different text."
-        )
+        logger.error(f"Translation error: {e}")
+        await update.message.reply_text("❌ Sorry, couldn't translate that. Please try again.")
 
 # ============================
 # ERROR HANDLER
 # ============================
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle errors"""
-    logger.error(f"Update {update} caused error {context.error}")
-    
+    logger.error(f"Error: {context.error}")
     if update and update.effective_chat:
-        try:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text="⚠️ An error occurred. Please try again later."
-            )
-        except:
-            pass
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="⚠️ An error occurred. Please try again."
+        )
 
 # ============================
-# MAIN FUNCTION
+# MAIN
 # ============================
 
 def main() -> None:
-    """Start the bot"""
     logger.info("🚀 Starting Language27 Translator Bot...")
-    logger.info(f"📝 Bot Username: @Language27translatorbot")
+    logger.info(f"📝 Bot: @Language27translatorbot")
     logger.info(f"🌍 Supporting {len(LANGUAGES)} languages")
     
+    # Start web server for healthchecks
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+    
+    # Start bot
     try:
-        # Start Flask web server in a separate thread for healthchecks
-        web_thread = threading.Thread(target=run_web_server, daemon=True)
-        web_thread.start()
-        logger.info(f"🌐 Web server started on port {os.environ.get('PORT', 8080)}")
-        
-        # Create application
         application = Application.builder().token(TOKEN).build()
         
-        # Command handlers
         application.add_handler(CommandHandler("start", start_command))
-        application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("language", language_command))
-        application.add_handler(CommandHandler("languages", languages_command))
         application.add_handler(CommandHandler("stats", stats_command))
-        application.add_handler(CommandHandler("about", about_command))
-        
-        # Message handlers
-        application.add_handler(
-            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message)
-        )
-        
-        # Callback query handler
+        application.add_handler(CommandHandler("languages", languages_command))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
         application.add_handler(CallbackQueryHandler(button_callback))
-        
-        # Error handler
         application.add_error_handler(error_handler)
         
-        # Start polling
-        logger.info("✅ Bot is ready and polling for updates...")
+        logger.info("✅ Bot is ready!")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
+        logger.error(f"Failed to start: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
