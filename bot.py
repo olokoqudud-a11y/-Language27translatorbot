@@ -1,6 +1,6 @@
 import os
+import sys
 import logging
-import json
 from typing import Dict, Optional
 from datetime import datetime
 
@@ -16,30 +16,68 @@ from telegram.ext import (
 from deep_translator import GoogleTranslator
 
 # ============================
-# CONFIGURATION
+# CONFIGURATION & LOGGING
 # ============================
 
-# Enable logging
+# Configure logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Get bot token from environment variable
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-if not TOKEN:
-    logger.error("TELEGRAM_BOT_TOKEN environment variable not set!")
-    raise ValueError("TELEGRAM_BOT_TOKEN environment variable not set!")
+# ============================
+# ENVIRONMENT VARIABLE CHECK
+# ============================
+
+def get_token():
+    """Get bot token from environment variables with better error handling"""
+    # Try different ways to get the token
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    
+    if not token:
+        # Try to read from .env file if it exists (for local development)
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    if line.startswith("TELEGRAM_BOT_TOKEN="):
+                        token = line.split("=")[1].strip()
+                        break
+        except FileNotFoundError:
+            pass
+    
+    if not token:
+        logger.error("=" * 60)
+        logger.error("❌ TELEGRAM_BOT_TOKEN environment variable not set!")
+        logger.error("=" * 60)
+        logger.error("Please set your bot token using one of these methods:")
+        logger.error("")
+        logger.error("1. Railway Dashboard:")
+        logger.error("   - Go to your Railway project")
+        logger.error("   - Click on your service")
+        logger.error("   - Go to 'Variables' tab")
+        logger.error("   - Add: TELEGRAM_BOT_TOKEN = your_token_here")
+        logger.error("")
+        logger.error("2. Railway CLI:")
+        logger.error("   railway variables set TELEGRAM_BOT_TOKEN='your_token_here'")
+        logger.error("")
+        logger.error("3. Local .env file:")
+        logger.error("   Create a .env file with: TELEGRAM_BOT_TOKEN=your_token_here")
+        logger.error("=" * 60)
+        sys.exit(1)
+    
+    return token
+
+# Get token with error handling
+TOKEN = get_token()
+logger.info("✅ Bot token loaded successfully!")
 
 # ============================
 # DATA STORAGE
 # ============================
 
 # Dictionary to store user preferences (in-memory)
-# For production, use Redis or a database
 user_preferences: Dict[int, Dict[str, str]] = {}
-STATS_FILE = "bot_stats.json"
 
 # Language data
 LANGUAGES = {
@@ -76,34 +114,13 @@ LANGUAGES = {
 
 # Language emojis
 LANGUAGE_EMOJIS = {
-    "en": "🇬🇧",
-    "es": "🇪🇸",
-    "fr": "🇫🇷",
-    "de": "🇩🇪",
-    "it": "🇮🇹",
-    "pt": "🇵🇹",
-    "ru": "🇷🇺",
-    "ja": "🇯🇵",
-    "zh-CN": "🇨🇳",
-    "zh-TW": "🇹🇼",
-    "ko": "🇰🇷",
-    "ar": "🇸🇦",
-    "hi": "🇮🇳",
-    "nl": "🇳🇱",
-    "el": "🇬🇷",
-    "tr": "🇹🇷",
-    "vi": "🇻🇳",
-    "th": "🇹🇭",
-    "id": "🇮🇩",
-    "pl": "🇵🇱",
-    "uk": "🇺🇦",
-    "ro": "🇷🇴",
-    "cs": "🇨🇿",
-    "sv": "🇸🇪",
-    "no": "🇳🇴",
-    "da": "🇩🇰",
-    "fi": "🇫🇮",
-    "hu": "🇭🇺",
+    "en": "🇬🇧", "es": "🇪🇸", "fr": "🇫🇷", "de": "🇩🇪",
+    "it": "🇮🇹", "pt": "🇵🇹", "ru": "🇷🇺", "ja": "🇯🇵",
+    "zh-CN": "🇨🇳", "zh-TW": "🇹🇼", "ko": "🇰🇷", "ar": "🇸🇦",
+    "hi": "🇮🇳", "nl": "🇳🇱", "el": "🇬🇷", "tr": "🇹🇷",
+    "vi": "🇻🇳", "th": "🇹🇭", "id": "🇮🇩", "pl": "🇵🇱",
+    "uk": "🇺🇦", "ro": "🇷🇴", "cs": "🇨🇿", "sv": "🇸🇪",
+    "no": "🇳🇴", "da": "🇩🇰", "fi": "🇫🇮", "hu": "🇭🇺",
     "he": "🇮🇱",
 }
 
@@ -149,13 +166,12 @@ def create_language_keyboard(exclude_lang: Optional[str] = None) -> InlineKeyboa
         emoji = LANGUAGE_EMOJIS.get(lang_code, "🌍")
         button_text = f"{emoji} {lang_name}"
         row.append(InlineKeyboardButton(button_text, callback_data=f"setlang_{lang_code}"))
-        if len(row) == 2:  # 2 buttons per row for better mobile view
+        if len(row) == 2:
             keyboard.append(row)
             row = []
     if row:
         keyboard.append(row)
     
-    # Add navigation buttons
     keyboard.append([
         InlineKeyboardButton("📊 My Stats", callback_data="stats"),
         InlineKeyboardButton("ℹ️ Help", callback_data="help")
@@ -166,9 +182,6 @@ def create_language_keyboard(exclude_lang: Optional[str] = None) -> InlineKeyboa
 
 def create_main_menu(user_id: int) -> InlineKeyboardMarkup:
     """Create the main menu keyboard"""
-    current_lang = get_user_language(user_id)
-    stats = get_user_stats(user_id)
-    
     keyboard = [
         [InlineKeyboardButton("🌍 Change Language", callback_data="change_lang")],
         [InlineKeyboardButton("📊 My Statistics", callback_data="stats")],
@@ -217,8 +230,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command"""
-    user_id = update.effective_user.id
-    
     help_text = (
         "📖 **Language27 Translator Bot - Help**\n\n"
         "**Commands:**\n"
@@ -230,9 +241,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• /about - About this bot\n\n"
         "**Translation:**\n"
         "Just send any text message and I'll translate it!\n"
-        "The source language is detected automatically.\n\n"
-        "**Support:**\n"
-        "Having issues? Contact @your_username"
+        "The source language is detected automatically."
     )
     
     reply_markup = InlineKeyboardMarkup([
@@ -323,9 +332,7 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "• Python 3.9+\n"
         "• python-telegram-bot\n"
         "• deep-translator\n"
-        "• Deployed on Railway\n\n"
-        "**Source Code:**\n"
-        "https://github.com/yourusername/Language27TranslatorBot"
+        "• Deployed on Railway"
     )
     
     reply_markup = InlineKeyboardMarkup([
@@ -353,7 +360,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Handle language selection
     if data.startswith("setlang_"):
         lang_code = data.replace("setlang_", "")
-        # Find language name
         lang_name = None
         for name, code in LANGUAGES.items():
             if code == lang_code:
@@ -371,7 +377,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 parse_mode="Markdown"
             )
             
-            # Show main menu
             reply_markup = create_main_menu(user_id)
             await query.message.reply_text(
                 "🔙 **Main Menu**",
@@ -515,7 +520,6 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # Get source language
         try:
-            # Try to detect source language
             source_lang = translator.detect(text)
             source_emoji = LANGUAGE_EMOJIS.get(source_lang, "🌍")
             source_name = ""
@@ -566,10 +570,13 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error(f"Update {update} caused error {context.error}")
     
     if update and update.effective_chat:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="⚠️ An error occurred. Please try again later."
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="⚠️ An error occurred. Please try again later."
+            )
+        except:
+            pass
 
 # ============================
 # MAIN FUNCTION
@@ -581,31 +588,36 @@ def main() -> None:
     logger.info(f"📝 Bot Username: @Language27translatorbot")
     logger.info(f"🌍 Supporting {len(LANGUAGES)} languages")
     
-    # Create application
-    application = Application.builder().token(TOKEN).build()
-    
-    # Command handlers
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("language", language_command))
-    application.add_handler(CommandHandler("languages", languages_command))
-    application.add_handler(CommandHandler("stats", stats_command))
-    application.add_handler(CommandHandler("about", about_command))
-    
-    # Message handlers
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message)
-    )
-    
-    # Callback query handler
-    application.add_handler(CallbackQueryHandler(button_callback))
-    
-    # Error handler
-    application.add_error_handler(error_handler)
-    
-    # Start polling
-    logger.info("✅ Bot is ready and polling for updates...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        # Create application
+        application = Application.builder().token(TOKEN).build()
+        
+        # Command handlers
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("language", language_command))
+        application.add_handler(CommandHandler("languages", languages_command))
+        application.add_handler(CommandHandler("stats", stats_command))
+        application.add_handler(CommandHandler("about", about_command))
+        
+        # Message handlers
+        application.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message)
+        )
+        
+        # Callback query handler
+        application.add_handler(CallbackQueryHandler(button_callback))
+        
+        # Error handler
+        application.add_error_handler(error_handler)
+        
+        # Start polling
+        logger.info("✅ Bot is ready and polling for updates...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
