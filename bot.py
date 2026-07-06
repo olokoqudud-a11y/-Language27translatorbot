@@ -1,8 +1,10 @@
 import os
 import sys
 import logging
+import threading
 from typing import Dict, Optional
 from datetime import datetime
+from flask import Flask, render_template_string
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -27,12 +29,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================
+# FLASK WEB SERVER FOR HEALTHCHECK
+# ============================
+
+app = Flask(__name__)
+
+@app.route('/')
+def healthcheck():
+    """Healthcheck endpoint for Railway"""
+    return "✅ Bot is running!", 200
+
+@app.route('/health')
+def health():
+    """Alternative healthcheck endpoint"""
+    return {"status": "healthy", "bot": "@Language27translatorbot"}, 200
+
+def run_web_server():
+    """Run Flask web server in a separate thread"""
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
+# ============================
 # ENVIRONMENT VARIABLE CHECK
 # ============================
 
 def get_token():
     """Get bot token from environment variables with better error handling"""
-    # Try different ways to get the token
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     
     if not token:
@@ -589,6 +611,11 @@ def main() -> None:
     logger.info(f"🌍 Supporting {len(LANGUAGES)} languages")
     
     try:
+        # Start Flask web server in a separate thread for healthchecks
+        web_thread = threading.Thread(target=run_web_server, daemon=True)
+        web_thread.start()
+        logger.info(f"🌐 Web server started on port {os.environ.get('PORT', 8080)}")
+        
         # Create application
         application = Application.builder().token(TOKEN).build()
         
